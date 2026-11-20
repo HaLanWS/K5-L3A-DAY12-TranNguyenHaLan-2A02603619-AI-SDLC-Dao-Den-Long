@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-headless/
+.env
+.env.*
+*.log
+tmp/
+.DS_Store
+Thumbs.db
