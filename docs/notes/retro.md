@@ -1,5 +1,9 @@
 # Báo cáo Tổng kết & Đánh giá Dự án (Retrospective)
 
+- **Sinh viên:** Trần Nguyễn Hà Lan
+- **MSSV:** 2A202603619 (hoặc 2A02603619) — Lớp `K5-L3A`
+- **Dự án:** Đảo Đèn Lồng (Day 12 · AI SDLC Lab)
+
 ## 1. Tổng quan 4 Phase
 - **Phase 1 (PRD-0 · Contract v1.0):** Xây dựng nền tảng Đảo Bến, tách rời simulation 60 tick/giây tất định (`Mulberry32`) khỏi Three.js.
 - **Phase 2 (Ticket-02 · Contract v1.1):** Chuẩn hóa số liệu điều khiển (Lướt 14 m/s, Nhảy, Rơi), mở rộng 3 hòn đảo (Đảo Bến, Đảo Cau, Đảo Chuông), thêm Gió Lạc và Bùa Gió.

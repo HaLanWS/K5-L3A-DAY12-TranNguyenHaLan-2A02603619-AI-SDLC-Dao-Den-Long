@@ -1,7 +1,7 @@
 # Đảo Đèn Lồng — Day 12 AI SDLC (v1.0.0)
 
 > **Video demo:** [docs/demo/demo.mp4](docs/demo/demo.mp4) (hoặc xem tại GitHub Release v1.0.0)  
-> **Sinh viên:** Trần Nguyễn Hà Lan — `2A02603619` (`K5-L3A`)  
+> **Sinh viên:** Trần Nguyễn Hà Lan — `2A202603619` (`2A02603619`) — Lớp `K5-L3A`  
 > **Trạng thái:** Hoàn tất **Phase 4 (Bình minh: phát hành v1.0.0 · Test Contract v1.3)**
 
 ---
