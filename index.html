@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Đảo Đèn Lồng — Đêm 1: Đảo Bến</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #090d1c;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        color: #fff6e5;
+      }
+      #app {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .hud-layer {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 16px 20px;
+      }
+      .hud-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .panel {
+        background: rgba(14, 19, 38, 0.72);
+        border: 1px solid rgba(255, 196, 107, 0.28);
+        backdrop-filter: blur(8px);
+        border-radius: 14px;
+        padding: 10px 16px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      }
+      .stat-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+        font-size: 14px;
+      }
+      .stat-row:last-child {
+        margin-bottom: 0;
+      }
+      .label {
+        color: #cbbba0;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .value-warm {
+        color: #ffbe5c;
+        font-weight: 700;
+        font-size: 16px;
+      }
+      .flames-bar {
+        display: flex;
+        gap: 6px;
+      }
+      .flame-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 40% 35%, #fff5c0, #ff8c24 70%, #b83b00);
+        box-shadow: 0 0 10px rgba(255, 158, 44, 0.85);
+        transition: opacity 0.25s, transform 0.25s;
+      }
+      .flame-dot.lost {
+        background: rgba(120, 105, 140, 0.28);
+        box-shadow: none;
+        transform: scale(0.8);
+      }
+      .center-banner {
+        text-align: center;
+      }
+      .night-title {
+        font-size: 13px;
+        color: #ffd38c;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .lantern-dots {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin: 6px 0;
+      }
+      .lantern-pip {
+        width: 14px;
+        height: 18px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 200, 110, 0.5);
+        background: rgba(25, 32, 56, 0.8);
+        transition: all 0.3s;
+      }
+      .lantern-pip.lit {
+        background: radial-gradient(circle, #fff3b0, #ff9922);
+        box-shadow: 0 0 12px #ffaa33;
+        border-color: #fff0b8;
+      }
+      .timer-text {
+        font-variant-numeric: tabular-nums;
+        font-size: 15px;
+        font-weight: 600;
+        color: #f4e6d0;
+      }
+      .hud-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .hud-btn {
+        pointer-events: auto;
+        cursor: pointer;
+        border: 1px solid rgba(255, 196, 107, 0.35);
+        background: rgba(24, 31, 58, 0.82);
+        color: #ffe8c2;
+        border-radius: 10px;
+        padding: 7px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .hud-btn:hover {
+        background: rgba(255, 174, 66, 0.22);
+        border-color: #ffbe5c;
+      }
+      .hud-bottom {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      .context-prompt {
+        background: rgba(255, 166, 48, 0.18);
+        border: 1px solid rgba(255, 196, 98, 0.65);
+        color: #fff2d6;
+        border-radius: 999px;
+        padding: 7px 18px;
+        font-size: 14px;
+        font-weight: 600;
+        opacity: 0;
+        transform: translateY(6px);
+        transition: opacity 0.2s, transform 0.2s;
+      }
+      .context-prompt.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .controls-bar {
+        font-size: 12px;
+        color: #c8bca8;
+        background: rgba(12, 16, 32, 0.65);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        padding: 6px 16px;
+      }
+      .controls-bar kbd {
+        background: rgba(255, 200, 120, 0.16);
+        border: 1px solid rgba(255, 200, 120, 0.35);
+        border-radius: 4px;
+        padding: 1px 5px;
+        color: #ffd58c;
+        font-family: inherit;
+        font-size: 11px;
+      }
+      .overlay {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at center, rgba(16, 20, 42, 0.72), rgba(7, 9, 22, 0.92));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        padding: 20px;
+      }
+      .overlay.hidden {
+        display: none;
+      }
+      .card {
+        max-width: 480px;
+        width: 100%;
+        background: rgba(16, 21, 42, 0.94);
+        border: 1px solid rgba(255, 196, 107, 0.4);
+        border-radius: 20px;
+        padding: 28px 30px;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+      }
+      .card h1 {
+        font-size: 28px;
+        color: #ffd27d;
+        margin-bottom: 8px;
+      }
+      .card .subtitle {
+        font-size: 14px;
+        color: #d4c8b4;
+        line-height: 1.55;
+        margin-bottom: 18px;
+      }
+      .card .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .card .stat-box {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 196, 107, 0.18);
+        border-radius: 12px;
+        padding: 10px;
+      }
+      .card .stat-box .k {
+        font-size: 11px;
+        color: #b7aa96;
+        text-transform: uppercase;
+      }
+      .card .stat-box .v {
+        font-size: 20px;
+        font-weight: 700;
+        color: #ffbe5c;
+        margin-top: 2px;
+      }
+      .primary-btn {
+        cursor: pointer;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 28px;
+        font-size: 16px;
+        font-weight: 700;
+        color: #1c1205;
+        background: linear-gradient(135deg, #ffd87a, #ff9929);
+        box-shadow: 0 6px 20px rgba(255, 158, 44, 0.4);
+        transition: transform 0.15s, box-shadow 0.15s;
+      }
+      .primary-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 26px rgba(255, 158, 44, 0.55);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>
