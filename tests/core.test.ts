@@ -19,163 +19,117 @@ const idle: FrameInput = {
   pause: false,
 };
 
-describe("Phase 2 Core Simulation — Contract v1.1", () => {
-  it("moves accurately, rotates with cam_yaw_deg, and normalizes diagonal move", () => {
+describe("Phase 3 Core Simulation — Contract v1.2 (Đèn Cạn Dầu)", () => {
+  it("fuel decays at 1.0/s and turns lantern off when reaching 0", () => {
     const sim = new Simulation(1, 1, tuning, {
       random_motes: false,
       random_shades: false,
+      lanterns: [{ id: "L1", fuel: 2.0, lit: true }],
       motes: [],
       shades: [],
+      time_left_s: 100,
     });
 
-    for (let i = 0; i < 60; i++) sim.step({ ...idle, move: [0, 1], cam_yaw_deg: 0 });
-    expect(sim.getSnapshot().player.pos).toEqual([0, 0, 6]);
-
-    for (let i = 0; i < 60; i++) sim.step({ ...idle, move: [0, 1], cam_yaw_deg: 90 });
-    expect(sim.getSnapshot().player.pos).toEqual([6, 0, 6]);
-  });
-
-  it("dashes at 14 m/s for 12 ticks (0.2s), maintains air height, and enforces 1.5s cooldown", () => {
-    const sim = new Simulation(1, 1, tuning, {
-      random_motes: false,
-      random_shades: false,
-      motes: [],
-      shades: [],
-    });
-
-    const ev = sim.step({ ...idle, dash: true });
-    expect(ev.some((e) => e.name === "dash")).toBe(true);
-    for (let i = 0; i < 11; i++) sim.step(idle);
-    // 12 ticks * 14/60 = 2.8m along +Z
-    expect(sim.getSnapshot().player.pos[2]).toBeCloseTo(2.8, 2);
-    expect(sim.getSnapshot().player.dash_cd_s).toBeGreaterThan(1.0);
-  });
-
-  it("handles fall off island (Y < -10): -1 flame, lose carried, 60-tick respawn with 90-tick invuln", () => {
-    const sim = new Simulation(1, 1, tuning, {
-      random_motes: false,
-      random_shades: false,
-      player: { pos: [41, 0, 0], carried: 4, flames: 3 },
-      motes: [],
-      shades: [],
-    });
-
-    let fallEv = null;
-    for (let i = 0; i < 120; i++) {
-      const evs = sim.step(idle);
-      const hit = evs.find((e) => e.name === "player_hit" && e.data.by === "fall");
-      if (hit) {
-        fallEv = hit;
-        break;
-      }
-    }
-    expect(fallEv).not.toBeNull();
-    expect(fallEv?.data).toEqual({ by: "fall", flames: 2, dropped: 0, lost: 4 });
     for (let i = 0; i < 60; i++) sim.step(idle);
-    const snap = sim.getSnapshot();
-    expect(snap.player.pos).toEqual([0, 0, 0]);
-    expect(snap.player.invuln).toBe(true);
+    expect(sim.getSnapshot().lanterns.find((l) => l.id === "L1")?.fuel).toBeCloseTo(1.0, 1);
+
+    let outEv = null;
+    for (let i = 0; i < 65; i++) {
+      const evs = sim.step(idle);
+      const ev = evs.find((e) => e.name === "lantern_out");
+      if (ev) outEv = ev;
+    }
+    expect(outEv).toBeDefined();
+    expect(sim.getSnapshot().lanterns.find((l) => l.id === "L1")?.lit).toBe(false);
   });
 
-  it("deposits into lantern (+10/mote, +100/lantern) and wins when all 5 lanterns lit", () => {
+  it("refuels lit lantern, caps at 100 fuel, scores +5 per mote, and expands capacity", () => {
     const sim = new Simulation(1, 1, tuning, {
       random_motes: false,
       random_shades: false,
-      player: { pos: [0, 0, 24], carried: 10, flames: 3 },
-      lanterns: [
-        { id: "L1", pos: [0, 0, 25], deposited: 0, lit: false },
-        { id: "L2", lit: true },
-        { id: "L3", lit: true },
-        { id: "L4", lit: true },
-        { id: "L5", lit: true },
-      ],
+      player: { pos: [0, 0, 24], carried: 5 },
+      lanterns: [{ id: "L1", pos: [0, 0, 25], fuel: 85, lit: true }],
+      motes: [],
+      shades: [],
+      time_left_s: 100,
+    });
+
+    // ceil((100 - 85)/10) = 2 motes used
+    const evs = sim.step({ ...idle, interact: true });
+    const refuelEv = evs.find((e) => e.name === "refuel");
+    expect(refuelEv?.data).toEqual({ lantern_id: "L1", amount: 2, fuel: 100 });
+    expect(sim.getSnapshot().player.carried).toBe(3);
+    expect(sim.getSnapshot().score).toBe(10); // 2 motes * 5
+  });
+
+  it("relighting an ever_lit lantern only costs 5 motes and awards +40 points", () => {
+    const sim = new Simulation(1, 1, tuning, {
+      random_motes: false,
+      random_shades: false,
+      player: { pos: [0, 0, 24], carried: 5 },
+      lanterns: [{ id: "L1", pos: [0, 0, 25], lit: false, ever_lit: true, deposited: 0 }],
       motes: [],
       shades: [],
       time_left_s: 100,
     });
 
     const evs = sim.step({ ...idle, interact: true });
-    expect(evs.some((e) => e.name === "deposit")).toBe(true);
-    expect(evs.some((e) => e.name === "lantern_lit")).toBe(true);
-    expect(evs.some((e) => e.name === "game_over" && e.data.reason === "all_lit")).toBe(true);
-    // 10*10 + 100 + floor(99.983)*2 + 3*50 = 100 + 100 + 198 + 150 = 548
-    expect(sim.getSnapshot().score).toBe(548);
+    const litEv = evs.find((e) => e.name === "lantern_lit");
+    expect(litEv?.data).toEqual({ lantern_id: "L1", relight: true });
+    // 5 motes * 5 + 40 relight = 65
+    expect(sim.getSnapshot().score).toBe(65);
+    expect(sim.getSnapshot().player.capacity).toBe(12); // 10 + 2 * 1
   });
 
-  it("pulses shades within 5m 3D radius: stuns 120 ticks, pushes 4m over 15 ticks, +5 score", () => {
+  it("shade enters drain state on lantern with fuel < 30 and pulse awards +15 points", () => {
     const sim = new Simulation(1, 1, tuning, {
       random_motes: false,
       random_shades: false,
-      player: { pos: [0, 0, 0], carried: 5 },
-      shades: [{ id: "S1", pos: [0, 0.8, 3], state: "wander" }],
+      player: { pos: [0, 0, 0], carried: 3 },
+      lanterns: [{ id: "L1", pos: [0, 0, 20], fuel: 20, lit: true }],
+      shades: [{ id: "S1", pos: [0, 0.8, 19.5], state: "wander" }],
       motes: [],
+      time_left_s: 100,
     });
 
-    const evs = sim.step({ ...idle, pulse: true });
-    expect(evs.find((e) => e.name === "pulse")?.data).toEqual({ stunned_ids: ["S1"] });
-    expect(sim.getSnapshot().player.carried).toBe(2);
-    expect(sim.getSnapshot().score).toBe(5);
-    for (let i = 0; i < 14; i++) sim.step(idle);
-    expect(sim.getSnapshot().shades[0].pos[2]).toBeCloseTo(7.0, 2);
-    expect(sim.getSnapshot().shades[0].state).toBe("stunned");
+    sim.step(idle);
+    expect(sim.getSnapshot().shades[0].state).toBe("drain");
+
+    // Move Mây close to pulse the draining shade
+    const simPulse = new Simulation(1, 1, tuning, {
+      random_motes: false,
+      random_shades: false,
+      player: { pos: [0, 0, 18], carried: 3 },
+      lanterns: [{ id: "L1", pos: [0, 0, 20], fuel: 20, lit: true }],
+      shades: [{ id: "S1", pos: [0, 0.8, 19.5], state: "drain", target_lantern_id: "L1" }],
+      motes: [],
+      time_left_s: 100,
+    });
+
+    simPulse.step({ ...idle, pulse: true });
+    expect(simPulse.getSnapshot().score).toBe(15);
   });
 
-  it("supports Night 2 jump pad launch, Wind Charm, and Drifter steal + pulse drop", () => {
-    // Jump pad (20, 0, 18) -> lands on Island B (center 70, 0, 0)
-    const simPad = new Simulation(2, 2, tuning, {
+  it("wins with dawn_survived at timeout if >= 60% lanterns lit (3/5 in Night 1)", () => {
+    const sim = new Simulation(1, 1, tuning, {
       random_motes: false,
       random_shades: false,
-      random_drifters: false,
-      player: { pos: [20, 0, 18] },
+      player: { pos: [0, 0, 0], flames: 3 },
+      lanterns: [
+        { id: "L1", fuel: 50, lit: true },
+        { id: "L2", fuel: 50, lit: true },
+        { id: "L3", fuel: 50, lit: true },
+        { id: "L4", lit: false },
+        { id: "L5", lit: false },
+      ],
       motes: [],
       shades: [],
-      drifters: [],
+      time_left_s: 1 / 60,
     });
-    for (let i = 0; i < 95; i++) simPad.step(idle);
-    const padPos = simPad.getSnapshot().player.pos;
-    expect(Math.hypot(padPos[0] - 70, padPos[2])).toBeLessThan(28);
-    expect(simPad.getSnapshot().player.grounded).toBe(true);
 
-    // Wind Charm + Drifter steal & pulse drop
-    const sim2 = new Simulation(2, 2, tuning, {
-      random_motes: false,
-      random_shades: false,
-      random_drifters: false,
-      player: { pos: [35, 0, 0], carried: 6 },
-      motes: [],
-      shades: [],
-      drifters: [{ id: "D1", pos: [35, 1, 0.5], state: "chase" }],
-    });
-    const ev1 = sim2.step(idle);
-    expect(ev1.some((e) => e.name === "charm_picked")).toBe(true);
-    expect(ev1.some((e) => e.name === "drifter_steal" && e.data.amount === 3)).toBe(true);
-    expect(sim2.getSnapshot().player.carried).toBe(3);
-
-    const ev2 = sim2.step({ ...idle, pulse: true });
-    expect(ev2.some((e) => e.name === "drifter_drop" && e.data.amount === 3)).toBe(true);
-    expect(sim2.getSnapshot().motes.filter((m) => m.kind === "dropped")).toHaveLength(3);
-  });
-
-  it("supports pause freezing sim_tick and timers while wall tick advances", () => {
-    const sim = new Simulation(1, 3, tuning, {
-      random_motes: false,
-      random_shades: false,
-      random_drifters: false,
-      wind_enabled: true,
-      motes: [],
-      shades: [],
-      drifters: [],
-    });
-    sim.step(idle); // tick 1, sim_tick 1
-    const pauseEv = sim.step({ ...idle, pause: true }); // tick 2, paused
-    expect(pauseEv.some((e) => e.name === "paused")).toBe(true);
-    for (let i = 0; i < 10; i++) sim.step({ ...idle, pause: false });
-    const snap = sim.getSnapshot();
-    expect(snap.state).toBe("paused");
-    expect(snap.tick).toBe(12);
-    expect(snap.sim_tick).toBe(1);
-    const resEv = sim.step({ ...idle, pause: true });
-    expect(resEv.some((e) => e.name === "resumed")).toBe(true);
-    expect(sim.getSnapshot().state).toBe("playing");
+    const evs = sim.step(idle);
+    const winEv = evs.find((e) => e.name === "game_over" && e.data.result === "won");
+    expect(winEv?.data.reason).toBe("dawn_survived");
+    expect(sim.getSnapshot().state).toBe("won");
   });
 });

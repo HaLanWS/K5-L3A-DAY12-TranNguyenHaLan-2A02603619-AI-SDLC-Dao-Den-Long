@@ -11,7 +11,9 @@ export interface ScoreTuning {
 export interface GameTuning {
   player_speed: number;
   carry_capacity: number;
+  capacity_max: number;
   lantern_cost: number;
+  relight_cost: number;
   lantern_count_night1: number;
   pickup_radius: number;
   interact_radius: number;
@@ -33,6 +35,12 @@ export interface GameTuning {
   dash_speed: number;
   dash_duration_s: number;
   dash_cooldown_s: number;
+  fuel_max: number;
+  fuel_decay_per_s: number;
+  fuel_per_mote: number;
+  win_ratio: number;
+  drain_per_s: number;
+  low_fuel_threshold: number;
   score: ScoreTuning;
 }
 
@@ -42,6 +50,8 @@ export interface GameContract {
   build_cmd: string;
   run_cmd: string;
   headless_cmd: string;
+  bench_cmd?: string;
+  soak_cmd?: string;
   tuning: GameTuning;
 }
 
@@ -70,7 +80,7 @@ export interface InputFile {
   frames: InputFramePatch[];
 }
 
-export type ShadeState = "spawning" | "wander" | "chase" | "recoil" | "stunned";
+export type ShadeState = "spawning" | "wander" | "chase" | "drain" | "recoil" | "stunned";
 export type DrifterState = "idle" | "chase" | "flee" | "removed";
 export type GameState = "playing" | "paused" | "won" | "lost";
 
@@ -82,6 +92,7 @@ export interface ScenarioPlayer {
   dash_cd_ticks?: number;
   pulse_cd_ticks?: number;
   charm_ticks?: number;
+  successful_lights?: number;
 }
 
 export interface ScenarioLantern {
@@ -89,6 +100,8 @@ export interface ScenarioLantern {
   pos?: Vec3;
   deposited?: number;
   lit?: boolean;
+  fuel?: number;
+  ever_lit?: boolean;
 }
 
 export interface ScenarioShade {
@@ -96,6 +109,7 @@ export interface ScenarioShade {
   pos: Vec3;
   state?: ShadeState;
   state_ticks_left?: number;
+  target_lantern_id?: string | null;
 }
 
 export interface ScenarioDrifter {
@@ -136,6 +150,7 @@ export interface SnapshotPlayer {
   grounded: boolean;
   flames: number;
   carried: number;
+  capacity: number;
   invuln: boolean;
   dash_cd_s: number;
   pulse_cd_s: number;
@@ -147,6 +162,9 @@ export interface SnapshotLantern {
   pos: Vec3;
   lit: boolean;
   deposited: number;
+  fuel: number;
+  ever_lit: boolean;
+  relit_count: number;
 }
 
 export interface SnapshotShade {
@@ -203,7 +221,10 @@ export type EventName =
   | "night_start"
   | "mote_picked"
   | "deposit"
+  | "refuel"
   | "lantern_lit"
+  | "lantern_out"
+  | "fuel_drain"
   | "pulse"
   | "dash"
   | "charm_picked"

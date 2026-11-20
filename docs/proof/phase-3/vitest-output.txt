@@ -1,0 +1,11 @@
+
+ RUN  v3.2.7 C:/Users/Admin/Downloads/K5-L3A-DAY12-TranNguyenHaLan-2A02603619-AI-SDLC-Dao-Den-Long
+
+ ✓ tests/core.test.ts (5 tests) 5ms
+ ✓ tests/headless.test.ts (1 test) 55ms
+
+ Test Files  2 passed (2)
+      Tests  6 passed (6)
+   Start at  23:49:19
+   Duration  489ms (transform 90ms, setup 0ms, collect 116ms, tests 59ms, environment 0ms, prepare 331ms)
+
