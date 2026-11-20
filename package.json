@@ -12,7 +12,9 @@
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "test": "vitest run",
     "guard": "node scripts/hook-guard.mjs",
-    "verify": "node scripts/verify-phase3.mjs"
+    "verify": "node scripts/verify-phase3.mjs",
+    "bench": "node scripts/bench.mjs --seed 42 --duration 30 --out bench.json",
+    "soak": "node scripts/soak.mjs --seed 7 --nights 10 --out soak.json"
   },
   "dependencies": {
     "three": "^0.172.0"

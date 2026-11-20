@@ -1,0 +1,19 @@
+{
+  "nights": 10,
+  "crashes": 0,
+  "results": [
+    "playing",
+    "playing",
+    "playing",
+    "playing",
+    "playing",
+    "playing",
+    "playing",
+    "playing",
+    "playing",
+    "playing"
+  ],
+  "mem_start_mb": 36,
+  "mem_end_mb": 47,
+  "duration_s": 0.075
+}

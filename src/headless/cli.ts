@@ -135,6 +135,14 @@ function readJsonStrict(filePath: string, label: string): unknown {
 }
 
 export function runHeadless(argv: string[]): number {
+  if (argv.includes("--export-leaderboard")) {
+    const idx = argv.indexOf("--export-leaderboard");
+    const out = argv[idx + 1] || "leaderboard-export.json";
+    const data = fs.existsSync("leaderboard.json") ? fs.readFileSync("leaderboard.json", "utf8") : JSON.stringify({ entries: [] });
+    fs.writeFileSync(out, data, "utf8");
+    console.log(`Exported leaderboard to ${out}`);
+    return 0;
+  }
   let args: CliArgs;
   try {
     args = parseCliArgs(argv);
