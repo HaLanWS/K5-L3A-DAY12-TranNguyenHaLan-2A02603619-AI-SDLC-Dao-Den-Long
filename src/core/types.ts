@@ -18,6 +18,8 @@ export interface GameTuning {
   pulse_cost: number;
   pulse_radius: number;
   night1_duration_s: number;
+  night2_duration_s: number;
+  night3_duration_s: number;
   flames: number;
   invuln_s: number;
   hit_drop_ratio: number;
@@ -28,6 +30,9 @@ export interface GameTuning {
   shade_speed: number;
   shade_hit_radius: number;
   fall_enabled: boolean;
+  dash_speed: number;
+  dash_duration_s: number;
+  dash_cooldown_s: number;
   score: ScoreTuning;
 }
 
@@ -46,6 +51,8 @@ export interface FrameInput {
   jump: boolean;
   interact: boolean;
   pulse: boolean;
+  dash: boolean;
+  pause: boolean;
 }
 
 export interface InputFramePatch {
@@ -56,16 +63,25 @@ export interface InputFramePatch {
   interact?: boolean;
   pulse?: boolean;
   dash?: boolean;
+  pause?: boolean;
 }
 
 export interface InputFile {
   frames: InputFramePatch[];
 }
 
+export type ShadeState = "spawning" | "wander" | "chase" | "recoil" | "stunned";
+export type DrifterState = "idle" | "chase" | "flee" | "removed";
+export type GameState = "playing" | "paused" | "won" | "lost";
+
 export interface ScenarioPlayer {
   pos?: Vec3;
   carried?: number;
   flames?: number;
+  invuln_ticks?: number;
+  dash_cd_ticks?: number;
+  pulse_cd_ticks?: number;
+  charm_ticks?: number;
 }
 
 export interface ScenarioLantern {
@@ -78,27 +94,52 @@ export interface ScenarioLantern {
 export interface ScenarioShade {
   id?: string;
   pos: Vec3;
-  state?: string;
+  state?: ShadeState;
+  state_ticks_left?: number;
 }
 
-export type ScenarioMote = Vec3 | { id?: string; pos: Vec3 };
+export interface ScenarioDrifter {
+  id?: string;
+  pos: Vec3;
+  state?: DrifterState;
+  stolen?: number;
+}
+
+export interface ScenarioCharm {
+  id?: string;
+  pos: Vec3;
+  available?: boolean;
+  respawn_s?: number;
+}
+
+export type ScenarioMote =
+  | Vec3
+  | { id?: string; pos: Vec3; kind?: "random" | "dropped"; ttl_s?: number | null };
 
 export interface ScenarioConfig {
   player?: ScenarioPlayer;
   random_motes?: boolean;
   random_shades?: boolean;
+  random_drifters?: boolean;
+  wind_enabled?: boolean;
   motes?: ScenarioMote[];
   shades?: ScenarioShade[];
+  drifters?: ScenarioDrifter[];
+  charms?: ScenarioCharm[];
   lanterns?: ScenarioLantern[];
   time_left_s?: number;
 }
 
-export type GameState = "playing" | "won" | "lost";
-
 export interface SnapshotPlayer {
   pos: Vec3;
+  vel: Vec3;
+  grounded: boolean;
   flames: number;
   carried: number;
+  invuln: boolean;
+  dash_cd_s: number;
+  pulse_cd_s: number;
+  charm_s: number;
 }
 
 export interface SnapshotLantern {
@@ -111,35 +152,67 @@ export interface SnapshotLantern {
 export interface SnapshotShade {
   id: string;
   pos: Vec3;
-  state: string;
+  state: ShadeState;
 }
 
 export interface SnapshotMote {
   id: string;
   pos: Vec3;
+  kind: "random" | "dropped";
+  ttl_s: number | null;
+}
+
+export interface SnapshotDrifter {
+  id: string;
+  pos: Vec3;
+  state: DrifterState;
+  stolen: number;
+}
+
+export interface SnapshotCharm {
+  id: string;
+  pos: Vec3;
+  available: boolean;
+  respawn_s: number;
+}
+
+export interface SnapshotWind {
+  active: boolean;
+  dir_deg: number;
 }
 
 export interface SnapshotRecord {
   type: "snapshot";
   tick: number;
   sim_tick: number;
+  night: number;
   state: GameState;
   time_left_s: number;
   score: number;
+  wind: SnapshotWind;
   player: SnapshotPlayer;
   lanterns: SnapshotLantern[];
   shades: SnapshotShade[];
   motes_active: number;
   motes: SnapshotMote[];
+  drifters: SnapshotDrifter[];
+  charms: SnapshotCharm[];
 }
 
 export type EventName =
+  | "night_start"
   | "mote_picked"
   | "deposit"
   | "lantern_lit"
   | "pulse"
+  | "dash"
+  | "charm_picked"
+  | "drifter_steal"
+  | "drifter_drop"
   | "player_hit"
   | "shade_spawned"
+  | "paused"
+  | "resumed"
   | "game_over";
 
 export interface EventRecord {

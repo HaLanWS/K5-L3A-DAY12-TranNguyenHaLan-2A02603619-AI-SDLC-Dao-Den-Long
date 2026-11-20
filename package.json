@@ -12,7 +12,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "test": "vitest run",
     "guard": "node scripts/hook-guard.mjs",
-    "verify": "node scripts/verify-phase1.mjs"
+    "verify": "node scripts/verify-phase2.mjs"
   },
   "dependencies": {
     "three": "^0.172.0"

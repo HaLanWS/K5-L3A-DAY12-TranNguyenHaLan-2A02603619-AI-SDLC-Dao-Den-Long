@@ -195,17 +195,19 @@ export function runHeadless(argv: string[]): number {
     jump: false,
     interact: false,
     pulse: false,
+    dash: false,
+    pause: false,
   };
 
   const frames = inputFile?.frames ?? [];
   let frameIdx = 0;
 
   for (let k = 0; k < args.ticks; k++) {
-    if (sim.getState() !== "playing") {
+    const stBefore = sim.getState();
+    if (stBefore === "won" || stBefore === "lost") {
       break;
     }
 
-    // Apply patch if a frame targets tick k
     if (frameIdx < frames.length && frames[frameIdx].tick === k) {
       const patch = frames[frameIdx];
       if (patch.move !== undefined) currentInput.move = [patch.move[0], patch.move[1]];
@@ -213,6 +215,8 @@ export function runHeadless(argv: string[]): number {
       if (patch.jump !== undefined) currentInput.jump = patch.jump;
       if (patch.interact !== undefined) currentInput.interact = patch.interact;
       if (patch.pulse !== undefined) currentInput.pulse = patch.pulse;
+      if (patch.dash !== undefined) currentInput.dash = patch.dash;
+      if (patch.pause !== undefined) currentInput.pause = patch.pause;
       frameIdx += 1;
     }
 
@@ -225,12 +229,12 @@ export function runHeadless(argv: string[]): number {
       pushRecord(sim.getSnapshot());
     }
 
-    if (sim.getState() !== "playing") {
+    const stAfter = sim.getState();
+    if (stAfter === "won" || stAfter === "lost") {
       break;
     }
   }
 
-  // Final required End record
   pushRecord(sim.getEndRecord());
 
   try {
@@ -245,7 +249,6 @@ export function runHeadless(argv: string[]): number {
   return 0;
 }
 
-// Run when invoked directly via CLI
 const isMain =
   process.argv[1] !== undefined &&
   path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
