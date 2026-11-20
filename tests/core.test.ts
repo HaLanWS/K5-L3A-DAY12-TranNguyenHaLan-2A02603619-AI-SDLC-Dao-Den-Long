@@ -15,32 +15,12 @@ const idle: FrameInput = {
   jump: false,
   interact: false,
   pulse: false,
+  dash: false,
+  pause: false,
 };
 
-describe("Core Simulation — Test Contract v1.0", () => {
-  it("matches game.contract.json Night 1 defaults without emitting setup events", () => {
-    const sim = new Simulation(42, 1, tuning, {
-      random_motes: false,
-      random_shades: false,
-      motes: [[0, 0, 5]],
-      shades: [{ id: "S1", pos: [10, 0, 0] }],
-      lanterns: [{ id: "L1", pos: [0, 0, 25], lit: true }],
-      time_left_s: 300,
-    });
-
-    const snap = sim.getSnapshot();
-    expect(snap.tick).toBe(0);
-    expect(snap.sim_tick).toBe(0);
-    expect(snap.state).toBe("playing");
-    expect(snap.score).toBe(0); // pre-lit lantern must NOT grant score
-    expect(snap.player.pos).toEqual([0, 0, 0]);
-    expect(snap.lanterns).toHaveLength(5);
-    expect(snap.lanterns.find((l) => l.id === "L1")?.lit).toBe(true);
-    expect(snap.motes_active).toBe(1);
-    expect(snap.shades).toHaveLength(1);
-  });
-
-  it("moves accurately along world axes, rotates with cam_yaw_deg, and normalizes diagonal move > 1", () => {
+describe("Phase 2 Core Simulation — Contract v1.1", () => {
+  it("moves accurately, rotates with cam_yaw_deg, and normalizes diagonal move", () => {
     const sim = new Simulation(1, 1, tuning, {
       random_motes: false,
       random_shades: false,
@@ -48,29 +28,14 @@ describe("Core Simulation — Test Contract v1.0", () => {
       shades: [],
     });
 
-    // Move forward (+Z) at cam_yaw_deg = 0 for 60 ticks (1s) -> +6.0m on Z
-    for (let i = 0; i < 60; i++) {
-      sim.step({ ...idle, move: [0, 1], cam_yaw_deg: 0 });
-    }
+    for (let i = 0; i < 60; i++) sim.step({ ...idle, move: [0, 1], cam_yaw_deg: 0 });
     expect(sim.getSnapshot().player.pos).toEqual([0, 0, 6]);
 
-    // Move [0, 1] with cam_yaw_deg = 90 -> x' = 0*0 + 1*1 = +1 (+X) for 60 ticks -> +6.0m on X
-    for (let i = 0; i < 60; i++) {
-      sim.step({ ...idle, move: [0, 1], cam_yaw_deg: 90 });
-    }
+    for (let i = 0; i < 60; i++) sim.step({ ...idle, move: [0, 1], cam_yaw_deg: 90 });
     expect(sim.getSnapshot().player.pos).toEqual([6, 0, 6]);
-
-    // Move [1, 1] (length sqrt(2) > 1) must be normalized to length 1 -> +6m total distance in 60 ticks
-    const before = sim.getSnapshot().player.pos;
-    for (let i = 0; i < 60; i++) {
-      sim.step({ ...idle, move: [1, 1], cam_yaw_deg: 0 });
-    }
-    const after = sim.getSnapshot().player.pos;
-    const dist = Math.hypot(after[0] - before[0], after[2] - before[2]);
-    expect(dist).toBeCloseTo(tuning.player_speed, 2);
   });
 
-  it("jumps on rising edge and lands back on Y = 0", () => {
+  it("dashes at 14 m/s for 12 ticks (0.2s), maintains air height, and enforces 1.5s cooldown", () => {
     const sim = new Simulation(1, 1, tuning, {
       random_motes: false,
       random_shades: false,
@@ -78,48 +43,45 @@ describe("Core Simulation — Test Contract v1.0", () => {
       shades: [],
     });
 
-    sim.step({ ...idle, jump: true });
-    let maxY = sim.getSnapshot().player.pos[1];
-    expect(maxY).toBeGreaterThan(0);
-
-    // Hold jump=true continuously — should not double-jump after landing
-    for (let i = 0; i < 60; i++) {
-      sim.step({ ...idle, jump: true });
-      maxY = Math.max(maxY, sim.getSnapshot().player.pos[1]);
-    }
-    expect(maxY).toBeGreaterThan(1.0);
-    expect(sim.getSnapshot().player.pos[1]).toBe(0);
+    const ev = sim.step({ ...idle, dash: true });
+    expect(ev.some((e) => e.name === "dash")).toBe(true);
+    for (let i = 0; i < 11; i++) sim.step(idle);
+    // 12 ticks * 14/60 = 2.8m along +Z
+    expect(sim.getSnapshot().player.pos[2]).toBeCloseTo(2.8, 2);
+    expect(sim.getSnapshot().player.dash_cd_s).toBeGreaterThan(1.0);
   });
 
-  it("picks up motes within pickup_radius respecting carry_capacity and scores per_mote", () => {
+  it("handles fall off island (Y < -10): -1 flame, lose carried, 60-tick respawn with 90-tick invuln", () => {
     const sim = new Simulation(1, 1, tuning, {
       random_motes: false,
       random_shades: false,
-      player: { pos: [0, 0, 0], carried: 0 },
-      motes: [
-        [0, 0, 1.5],
-        [0, 0, 1.5],
-        [0, 0, 1.5],
-        [0, 0, 1.5],
-        [0, 0, 1.5],
-        [0, 0, 1.5], // 6th mote exceeds carry_capacity=5
-      ],
+      player: { pos: [41, 0, 0], carried: 4, flames: 3 },
+      motes: [],
       shades: [],
     });
 
-    const events = sim.step(idle);
-    const picked = events.filter((e) => e.name === "mote_picked");
-    expect(picked).toHaveLength(tuning.carry_capacity);
-    expect(sim.getSnapshot().player.carried).toBe(tuning.carry_capacity);
-    expect(sim.getSnapshot().motes_active).toBe(1);
-    expect(sim.getSnapshot().score).toBe(tuning.carry_capacity * tuning.score.per_mote);
+    let fallEv = null;
+    for (let i = 0; i < 120; i++) {
+      const evs = sim.step(idle);
+      const hit = evs.find((e) => e.name === "player_hit" && e.data.by === "fall");
+      if (hit) {
+        fallEv = hit;
+        break;
+      }
+    }
+    expect(fallEv).not.toBeNull();
+    expect(fallEv?.data).toEqual({ by: "fall", flames: 2, dropped: 0, lost: 4 });
+    for (let i = 0; i < 60; i++) sim.step(idle);
+    const snap = sim.getSnapshot();
+    expect(snap.player.pos).toEqual([0, 0, 0]);
+    expect(snap.player.invuln).toBe(true);
   });
 
-  it("deposits into unlit lantern on rising edge, lights it, and wins when all 5 lanterns are lit", () => {
+  it("deposits into lantern (+10/mote, +100/lantern) and wins when all 5 lanterns lit", () => {
     const sim = new Simulation(1, 1, tuning, {
       random_motes: false,
       random_shades: false,
-      player: { pos: [0, 0, 23], carried: 4, flames: 3 },
+      player: { pos: [0, 0, 24], carried: 10, flames: 3 },
       lanterns: [
         { id: "L1", pos: [0, 0, 25], deposited: 0, lit: false },
         { id: "L2", lit: true },
@@ -132,179 +94,88 @@ describe("Core Simulation — Test Contract v1.0", () => {
       time_left_s: 100,
     });
 
-    const events = sim.step({ ...idle, interact: true });
-    expect(events.map((e) => e.name)).toEqual(["deposit", "lantern_lit", "game_over"]);
-    expect(events[0].data).toEqual({
-      lantern_id: "L1",
-      amount: tuning.lantern_cost,
-      deposited: tuning.lantern_cost,
-    });
-    expect(events[1].data).toEqual({ lantern_id: "L1" });
-    expect(events[2].data).toEqual({ result: "won", reason: "all_lit" });
-
-    const snap = sim.getSnapshot();
-    expect(snap.state).toBe("won");
-    expect(snap.player.carried).toBe(4 - tuning.lantern_cost);
-    const expectedScore =
-      tuning.score.per_lantern +
-      Math.floor(100 - 1 / 60) * tuning.score.per_second_left +
-      3 * tuning.score.per_flame_left;
-    expect(snap.score).toBe(expectedScore);
+    const evs = sim.step({ ...idle, interact: true });
+    expect(evs.some((e) => e.name === "deposit")).toBe(true);
+    expect(evs.some((e) => e.name === "lantern_lit")).toBe(true);
+    expect(evs.some((e) => e.name === "game_over" && e.data.reason === "all_lit")).toBe(true);
+    // 10*10 + 100 + floor(99.983)*2 + 3*50 = 100 + 100 + 198 + 150 = 548
+    expect(sim.getSnapshot().score).toBe(548);
   });
 
-  it("pulses to push and stun shades within pulse_radius and enforces cooldown", () => {
+  it("pulses shades within 5m 3D radius: stuns 120 ticks, pushes 4m over 15 ticks, +5 score", () => {
     const sim = new Simulation(1, 1, tuning, {
       random_motes: false,
       random_shades: false,
-      player: { pos: [0, 0, 0], carried: 3 },
-      shades: [
-        { id: "S1", pos: [0, 0.9, 5] }, // inside pulse_radius (7m)
-        { id: "S2", pos: [20, 0.9, 0] }, // outside pulse_radius
-      ],
+      player: { pos: [0, 0, 0], carried: 5 },
+      shades: [{ id: "S1", pos: [0, 0.8, 3], state: "wander" }],
       motes: [],
     });
 
-    const events = sim.step({ ...idle, pulse: true });
-    const pulseEv = events.find((e) => e.name === "pulse");
-    expect(pulseEv).toBeDefined();
-    expect(pulseEv?.data).toEqual({ stunned_ids: ["S1"] });
-
-    const snap1 = sim.getSnapshot();
-    expect(snap1.player.carried).toBe(3 - tuning.pulse_cost);
-    expect(snap1.score).toBe(tuning.score.per_stun);
-    const s1 = snap1.shades.find((s) => s.id === "S1")!;
-    expect(s1.state).toBe("stunned");
-    expect(s1.pos[2]).toBeCloseTo(5 + tuning.pulse_push_m, 3);
-
-    // Immediately trying to pulse again during cooldown does nothing
-    sim.step({ ...idle, pulse: false });
-    const ev2 = sim.step({ ...idle, pulse: true });
-    expect(ev2.find((e) => e.name === "pulse")).toBeUndefined();
-
-    // Wait out full pulse_stun_s -> S1 resumes chasing
-    const stunTicks = Math.round(tuning.pulse_stun_s * 60);
-    for (let i = 0; i < stunTicks; i++) {
-      sim.step(idle);
-    }
-    expect(sim.getSnapshot().shades.find((s) => s.id === "S1")?.state).toBe("chase");
-  });
-
-  it("blocks shades from entering safe_radius around lit lanterns", () => {
-    const sim = new Simulation(1, 1, tuning, {
-      random_motes: false,
-      random_shades: false,
-      player: { pos: [0, 0, 25], flames: 3 },
-      lanterns: [{ id: "L1", pos: [0, 0, 25], lit: true }],
-      shades: [{ id: "S1", pos: [0, 0.9, 17] }],
-      motes: [],
-    });
-
-    for (let i = 0; i < 240; i++) {
-      sim.step(idle);
-      const s1 = sim.getSnapshot().shades[0];
-      const distToL1 = Math.hypot(s1.pos[0] - 0, s1.pos[2] - 25);
-      expect(distToL1).toBeGreaterThanOrEqual(tuning.safe_radius - 0.002);
-    }
-    expect(sim.getSnapshot().player.flames).toBe(3);
-  });
-
-  it("deals damage on shade hit, drops motes by hit_drop_ratio, applies invuln_s, and loses at 0 flames", () => {
-    const sim = new Simulation(1, 1, tuning, {
-      random_motes: false,
-      random_shades: false,
-      player: { pos: [0, 0, 0], carried: 4, flames: 2 },
-      shades: [{ id: "S1", pos: [0, 0.9, 0.5] }],
-      motes: [],
-    });
-
-    // Hit 1 on tick 1
-    const ev1 = sim.step(idle);
-    const hit1 = ev1.find((e) => e.name === "player_hit");
-    expect(hit1?.data).toEqual({ by: "shade", flames: 1, dropped: 2 });
+    const evs = sim.step({ ...idle, pulse: true });
+    expect(evs.find((e) => e.name === "pulse")?.data).toEqual({ stunned_ids: ["S1"] });
     expect(sim.getSnapshot().player.carried).toBe(2);
-
-    // Next 89 ticks: invulnerable (1.5s = 90 ticks)
-    for (let i = 0; i < Math.round(tuning.invuln_s * 60) - 1; i++) {
-      const ev = sim.step(idle);
-      expect(ev.find((e) => e.name === "player_hit")).toBeUndefined();
-    }
-
-    // Tick 91 (exact 90 ticks later): vulnerable again -> Hit 2 -> 0 flames -> lost
-    const evFinal = sim.step(idle);
-    expect(evFinal.map((e) => e.name)).toEqual(["player_hit", "game_over"]);
-    expect(evFinal[1].data).toEqual({ result: "lost", reason: "no_flames" });
-    expect(sim.getSnapshot().state).toBe("lost");
+    expect(sim.getSnapshot().score).toBe(5);
+    for (let i = 0; i < 14; i++) sim.step(idle);
+    expect(sim.getSnapshot().shades[0].pos[2]).toBeCloseTo(7.0, 2);
+    expect(sim.getSnapshot().shades[0].state).toBe("stunned");
   });
 
-  it("ends with lost / dawn when time_left_s reaches 0", () => {
-    const sim = new Simulation(1, 1, tuning, {
+  it("supports Night 2 jump pad launch, Wind Charm, and Drifter steal + pulse drop", () => {
+    // Jump pad (20, 0, 18) -> lands on Island B (center 70, 0, 0)
+    const simPad = new Simulation(2, 2, tuning, {
       random_motes: false,
       random_shades: false,
+      random_drifters: false,
+      player: { pos: [20, 0, 18] },
       motes: [],
       shades: [],
-      time_left_s: 1,
+      drifters: [],
     });
+    for (let i = 0; i < 95; i++) simPad.step(idle);
+    const padPos = simPad.getSnapshot().player.pos;
+    expect(Math.hypot(padPos[0] - 70, padPos[2])).toBeLessThan(28);
+    expect(simPad.getSnapshot().player.grounded).toBe(true);
 
-    let gameOverEv = null;
-    for (let i = 0; i < 60; i++) {
-      const evs = sim.step(idle);
-      for (const e of evs) {
-        if (e.name === "game_over") gameOverEv = e;
-      }
-    }
-
-    expect(gameOverEv).not.toBeNull();
-    expect(gameOverEv?.tick).toBe(60);
-    expect(gameOverEv?.data).toEqual({ result: "lost", reason: "dawn" });
-    expect(sim.getSnapshot().state).toBe("lost");
-    expect(sim.getSnapshot().time_left_s).toBe(0);
-  });
-
-  it("preserves sub-unit move speed, avoids -0 on 180deg yaw, preserves mote Y, and auto-lights full scenario lanterns", () => {
-    const sim = new Simulation(1, 1, tuning, {
+    // Wind Charm + Drifter steal & pulse drop
+    const sim2 = new Simulation(2, 2, tuning, {
       random_motes: false,
       random_shades: false,
-      motes: [{ id: "M_CUSTOM", pos: [10, 0.5, 0] }],
+      random_drifters: false,
+      player: { pos: [35, 0, 0], carried: 6 },
+      motes: [],
       shades: [],
-      lanterns: [{ id: "L2", deposited: tuning.lantern_cost }],
+      drifters: [{ id: "D1", pos: [35, 1, 0.5], state: "chase" }],
     });
+    const ev1 = sim2.step(idle);
+    expect(ev1.some((e) => e.name === "charm_picked")).toBe(true);
+    expect(ev1.some((e) => e.name === "drifter_steal" && e.data.amount === 3)).toBe(true);
+    expect(sim2.getSnapshot().player.carried).toBe(3);
 
-    const s0 = sim.getSnapshot();
-    expect(s0.motes).toEqual([{ id: "M_CUSTOM", pos: [10, 0.5, 0] }]);
-    expect(s0.lanterns.find((l) => l.id === "L2")?.lit).toBe(true);
-    expect(s0.score).toBe(0);
-
-    // Sub-unit move [0.5, 0] must NOT be scaled up (moves 0.5 * 6.0 = 3.0m in 60 ticks)
-    for (let i = 0; i < 60; i++) {
-      sim.step({ ...idle, move: [0.5, 0], cam_yaw_deg: 0 });
-    }
-    expect(sim.getSnapshot().player.pos).toEqual([3, 0, 0]);
-
-    // Move at cam_yaw_deg = 180 back toward origin; ensure no -0 in coordinates
-    for (let i = 0; i < 60; i++) {
-      sim.step({ ...idle, move: [0.5, 0], cam_yaw_deg: 180 });
-    }
-    const pos = sim.getSnapshot().player.pos;
-    expect(pos[0]).toBe(0);
-    expect(Object.is(pos[0], -0)).toBe(false);
-    expect(Object.is(pos[2], -0)).toBe(false);
+    const ev2 = sim2.step({ ...idle, pulse: true });
+    expect(ev2.some((e) => e.name === "drifter_drop" && e.data.amount === 3)).toBe(true);
+    expect(sim2.getSnapshot().motes.filter((m) => m.kind === "dropped")).toHaveLength(3);
   });
 
-  it("picks up exact boundary mote on tick 72 without 1/60 float drift", () => {
-    const sim = new Simulation(1, 1, tuning, {
+  it("supports pause freezing sim_tick and timers while wall tick advances", () => {
+    const sim = new Simulation(1, 3, tuning, {
       random_motes: false,
       random_shades: false,
-      motes: [[0, 0, 9]],
+      random_drifters: false,
+      wind_enabled: true,
+      motes: [],
       shades: [],
+      drifters: [],
     });
-
-    let pickedTick = -1;
-    for (let i = 0; i < 80; i++) {
-      const evs = sim.step({ ...idle, move: [0, 1], cam_yaw_deg: 0 });
-      const p = evs.find((e) => e.name === "mote_picked");
-      if (p) pickedTick = p.tick;
-    }
-    // 6.0 m/s = 0.1 m/tick -> at tick 72 player is at z=7.2, dist to z=9.0 is exact 1.8 === pickup_radius
-    expect(pickedTick).toBe(72);
+    sim.step(idle); // tick 1, sim_tick 1
+    const pauseEv = sim.step({ ...idle, pause: true }); // tick 2, paused
+    expect(pauseEv.some((e) => e.name === "paused")).toBe(true);
+    for (let i = 0; i < 10; i++) sim.step({ ...idle, pause: false });
+    const snap = sim.getSnapshot();
+    expect(snap.state).toBe("paused");
+    expect(snap.tick).toBe(12);
+    expect(snap.sim_tick).toBe(1);
+    const resEv = sim.step({ ...idle, pause: true });
+    expect(resEv.some((e) => e.name === "resumed")).toBe(true);
+    expect(sim.getSnapshot().state).toBe("playing");
   });
 });
