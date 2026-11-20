@@ -2,60 +2,128 @@ import contractData from "../../game.contract.json";
 import { DT, Simulation } from "../core/simulation.js";
 import type { FrameInput, GameContract } from "../core/types.js";
 import { SoundEngine } from "./audio.js";
-import { GameHUD } from "./hud.js";
+import { GameHUD, type UserSettings } from "./hud.js";
 import { IslandRenderer } from "./renderer.js";
+
+const SETTINGS_KEY = "dao_den_long_settings_v1";
+
+function loadSettings(): UserSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<UserSettings>;
+      return {
+        volume: typeof parsed.volume === "number" ? parsed.volume : 0.7,
+        mouseSensitivity:
+          typeof parsed.mouseSensitivity === "number" ? parsed.mouseSensitivity : 1.0,
+      };
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return { volume: 0.7, mouseSensitivity: 1.0 };
+}
+
+function saveSettings(s: UserSettings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 const contract = contractData as GameContract;
 const container = document.getElementById("app")!;
+let settings = loadSettings();
 
 const renderer = new IslandRenderer(container, contract.tuning);
 const sound = new SoundEngine();
+sound.setVolume(settings.volume);
 
-let sim = new Simulation(202601, 1, contract.tuning);
-let started = false;
+let currentNight: 1 | 2 | 3 = 1;
+let totalCampaignScore = 0;
+let sim = new Simulation(202601, currentNight, contract.tuning);
+let inMenuOrIntro = true;
 let gameOverShown = false;
 let camYawDeg = 0;
 let accumulator = 0;
 let lastTime = performance.now();
+let lastCountdownSec = 11;
+let prevWindWarning = false;
+let pendingPauseToggle = false;
 
 const keys = new Set<string>();
 let dragging = false;
 let lastMouseX = 0;
 
-function resetGame(autoStart: boolean): void {
-  const newSeed = Math.floor(Date.now() % 1_000_000) + 1;
-  sim = new Simulation(newSeed, 1, contract.tuning);
-  started = autoStart;
+function loadNight(night: 1 | 2 | 3, showIntro: boolean): void {
+  currentNight = night;
+  const seed = Math.floor(Date.now() % 1_000_000) + night * 100;
+  sim = new Simulation(seed, night, contract.tuning);
   gameOverShown = false;
   camYawDeg = 0;
   accumulator = 0;
+  lastCountdownSec = 11;
+  prevWindWarning = false;
+  pendingPauseToggle = false;
   renderer.resetEffects();
-  hud.update(sim.getSnapshot(), sim.getDiagnostics().pulseCooldownTicks);
+
+  if (showIntro) {
+    inMenuOrIntro = true;
+    hud.showNightIntro(sim.map);
+  } else {
+    inMenuOrIntro = false;
+    hud.hideOverlay();
+    sound.startNightBgm();
+  }
 }
 
-const hud = new GameHUD(container, contract.tuning, {
-  onStart: () => {
-    started = true;
+const hud = new GameHUD(container, contract.tuning, settings, {
+  onPlayCampaign: () => {
+    totalCampaignScore = 0;
+    loadNight(1, true);
+  },
+  onStartNight: () => {
+    inMenuOrIntro = false;
     lastTime = performance.now();
+    sound.startNightBgm();
   },
-  onRestart: () => {
-    resetGame(true);
+  onResume: () => {
+    if (sim.getState() === "paused") {
+      pendingPauseToggle = true;
+    }
   },
-  onToggleMute: () => sound.toggleMute(),
+  onRestartNight: () => {
+    loadNight(currentNight, false);
+  },
+  onNextNight: () => {
+    const next = Math.min(3, currentNight + 1) as 1 | 2 | 3;
+    loadNight(next, true);
+  },
+  onMainMenu: () => {
+    inMenuOrIntro = true;
+    sound.stopNightBgm();
+    hud.showMainMenu();
+  },
+  onSettingsChange: (next) => {
+    settings = next;
+    sound.setVolume(next.volume);
+    saveSettings(next);
+  },
 });
 
-// Keyboard & mouse camera controls
+hud.showMainMenu();
+
 window.addEventListener("keydown", (e) => {
   if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
     e.preventDefault();
   }
   keys.add(e.code);
-  if (!e.repeat && e.code === "KeyR" && started) {
-    hud.hideOverlay();
-    resetGame(true);
-  }
-  if (!e.repeat && e.code === "KeyM") {
-    hud.setMutedState(sound.toggleMute());
+
+  if (!e.repeat && !inMenuOrIntro && (e.code === "Escape" || e.code === "KeyP")) {
+    if (sim.getState() === "playing" || sim.getState() === "paused") {
+      pendingPauseToggle = true;
+    }
   }
 });
 
@@ -77,7 +145,7 @@ window.addEventListener("pointermove", (e) => {
   if (!dragging) return;
   const dx = e.clientX - lastMouseX;
   lastMouseX = e.clientX;
-  camYawDeg = (camYawDeg - dx * 0.35) % 360;
+  camYawDeg = (camYawDeg - dx * 0.35 * settings.mouseSensitivity) % 360;
 });
 
 window.addEventListener("pointerup", () => {
@@ -85,8 +153,6 @@ window.addEventListener("pointerup", () => {
 });
 
 function buildInput(): FrameInput {
-  // Camera sits behind Mây along (-sin(θ), -cos(θ)) looking toward (+sin(θ), +cos(θ)).
-  // In Contract C world formula, W = +Z (mz=+1), S = -Z (mz=-1), A = +X (mx=+1), D = -X (mx=-1).
   let mx = 0;
   let mz = 0;
   if (keys.has("KeyW") || keys.has("ArrowUp")) mz += 1;
@@ -94,12 +160,17 @@ function buildInput(): FrameInput {
   if (keys.has("KeyA") || keys.has("ArrowLeft")) mx += 1;
   if (keys.has("KeyD") || keys.has("ArrowRight")) mx -= 1;
 
+  const pauseVal = pendingPauseToggle;
+  pendingPauseToggle = false;
+
   return {
     move: [mx, mz],
     cam_yaw_deg: camYawDeg,
     jump: keys.has("Space"),
     interact: keys.has("KeyE") || keys.has("KeyF"),
-    pulse: keys.has("KeyQ") || keys.has("ShiftLeft") || keys.has("ShiftRight"),
+    pulse: keys.has("KeyQ"),
+    dash: keys.has("ShiftLeft") || keys.has("ShiftRight"),
+    pause: pauseVal,
   };
 }
 
@@ -107,51 +178,84 @@ function loop(now: number): void {
   const frameDt = Math.min(0.1, (now - lastTime) / 1000);
   lastTime = now;
 
-  // Optional keyboard camera rotation (Z / C)
-  if (started && sim.getState() === "playing") {
-    if (keys.has("KeyZ")) camYawDeg = (camYawDeg + 110 * frameDt) % 360;
-    if (keys.has("KeyC")) camYawDeg = (camYawDeg - 110 * frameDt) % 360;
+  if (!inMenuOrIntro) {
+    if (sim.getState() === "playing") {
+      if (keys.has("KeyZ")) camYawDeg = (camYawDeg + 110 * frameDt) % 360;
+      if (keys.has("KeyC")) camYawDeg = (camYawDeg - 110 * frameDt) % 360;
+    }
 
     accumulator += frameDt;
-    while (accumulator >= DT && sim.getState() === "playing") {
+    while (accumulator >= DT) {
+      const st = sim.getState();
+      if (st === "won" || st === "lost") {
+        accumulator = 0;
+        break;
+      }
+      const prevGrounded = sim.getSnapshot().player.grounded;
       const input = buildInput();
       const events = sim.step(input);
       accumulator -= DT;
 
+      const snapNow = sim.getSnapshot();
+      if (prevGrounded && !snapNow.player.grounded && snapNow.player.vel[1] > 1) {
+        sound.playJump();
+      }
+
       for (const ev of events) {
-        if (ev.name === "mote_picked") {
-          sound.playMotePickup(Number(ev.data.carried ?? 1));
-        } else if (ev.name === "deposit") {
-          sound.playDeposit();
-        } else if (ev.name === "lantern_lit") {
-          sound.playLanternLit();
-        } else if (ev.name === "pulse") {
+        if (ev.name === "paused") hud.showPauseMenu();
+        else if (ev.name === "resumed") hud.hideOverlay();
+        else if (ev.name === "mote_picked") sound.playMotePickup(Number(ev.data.carried ?? 1));
+        else if (ev.name === "charm_picked") sound.playCharmPickup();
+        else if (ev.name === "deposit") sound.playDeposit();
+        else if (ev.name === "lantern_lit") sound.playLanternLit();
+        else if (ev.name === "dash") sound.playDash();
+        else if (ev.name === "shade_spawned") sound.playShadeSpawn();
+        else if (ev.name === "pulse") {
           sound.playPulse();
-          const snap = sim.getSnapshot();
-          renderer.triggerPulseEffect(snap.player.pos[0], snap.player.pos[2]);
+          renderer.triggerPulseEffect(
+            snapNow.player.pos[0],
+            snapNow.player.pos[1],
+            snapNow.player.pos[2]
+          );
         } else if (ev.name === "player_hit") {
           sound.playHit();
         } else if (ev.name === "game_over") {
-          if (ev.data.result === "won") sound.playWin();
-          else sound.playLose();
+          if (ev.data.result === "won") {
+            totalCampaignScore += snapNow.score;
+            sound.playWin();
+          } else {
+            sound.playLose();
+          }
         }
       }
+
+      // Last 10s countdown sound
+      const secCeil = Math.ceil(snapNow.time_left_s);
+      if (snapNow.state === "playing" && secCeil <= 10 && secCeil >= 1 && secCeil < lastCountdownSec) {
+        lastCountdownSec = secCeil;
+        sound.playCountdownTick();
+      }
+
+      const diagNow = sim.getDiagnostics();
+      if (diagNow.windWarning && !prevWindWarning) {
+        sound.playWindWarning();
+      }
+      prevWindWarning = diagNow.windWarning;
     }
   }
 
   const snap = sim.getSnapshot();
   const diag = sim.getDiagnostics();
-  renderer.syncAndRender(snap, camYawDeg, diag.facingYawRad, diag.invulnTicks, frameDt);
-  hud.update(snap, diag.pulseCooldownTicks);
+  renderer.syncAndRender(snap, sim.map, camYawDeg, diag.facingYawRad, diag.windWarning, frameDt);
+  const arrow = renderer.getNearestUnlitLanternScreen(snap);
+  hud.update(snap, sim.map, diag.windWarning, arrow);
 
-  if (snap.state !== "playing" && !gameOverShown) {
+  if ((snap.state === "won" || snap.state === "lost") && !gameOverShown) {
     gameOverShown = true;
-    hud.showEndScreen(snap, diag.endReason);
+    hud.showNightResult(snap, totalCampaignScore, diag.endReason);
   }
 
   requestAnimationFrame(loop);
 }
 
-// Initial render
-hud.update(sim.getSnapshot(), 0);
 requestAnimationFrame(loop);

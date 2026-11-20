@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Đảo Đèn Lồng — Đêm 1: Đảo Bến</title>
+    <title>Đảo Đèn Lồng — Ba Hòn Đảo</title>
     <style>
       * {
         box-sizing: border-box;
@@ -16,9 +16,9 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #090d1c;
+        background: #0e1430;
         font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-        color: #fff6e5;
+        color: #f5f1e6;
       }
       #app {
         position: relative;
@@ -46,22 +46,12 @@
         gap: 12px;
       }
       .panel {
-        background: rgba(14, 19, 38, 0.72);
-        border: 1px solid rgba(255, 196, 107, 0.28);
+        background: rgba(14, 20, 48, 0.78);
+        border: 1px solid rgba(242, 193, 78, 0.35);
         backdrop-filter: blur(8px);
         border-radius: 14px;
         padding: 10px 16px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-      }
-      .stat-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 6px;
-        font-size: 14px;
-      }
-      .stat-row:last-child {
-        margin-bottom: 0;
       }
       .label {
         color: #cbbba0;
@@ -69,194 +59,297 @@
         text-transform: uppercase;
         letter-spacing: 0.06em;
       }
-      .value-warm {
-        color: #ffbe5c;
+      .value-gold {
+        color: #f2c14e;
         font-weight: 700;
-        font-size: 16px;
+        font-size: 18px;
       }
       .flames-bar {
         display: flex;
-        gap: 6px;
+        gap: 8px;
+        margin-top: 6px;
       }
       .flame-dot {
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
         border-radius: 50%;
-        background: radial-gradient(circle at 40% 35%, #fff5c0, #ff8c24 70%, #b83b00);
-        box-shadow: 0 0 10px rgba(255, 158, 44, 0.85);
-        transition: opacity 0.25s, transform 0.25s;
+        background: radial-gradient(circle at 40% 35%, #ffe9b0, #ffb347 68%, #c8102e);
+        box-shadow: 0 0 10px rgba(255, 179, 71, 0.85);
+        transition: opacity 0.2s, transform 0.2s;
       }
       .flame-dot.lost {
-        background: rgba(120, 105, 140, 0.28);
+        background: rgba(91, 95, 110, 0.35);
         box-shadow: none;
         transform: scale(0.8);
       }
       .center-banner {
         text-align: center;
+        min-width: 170px;
       }
       .night-title {
         font-size: 13px;
-        color: #ffd38c;
+        color: #f2c14e;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-      }
-      .lantern-dots {
-        display: flex;
-        justify-content: center;
-        gap: 8px;
-        margin: 6px 0;
-      }
-      .lantern-pip {
-        width: 14px;
-        height: 18px;
-        border-radius: 6px;
-        border: 1px solid rgba(255, 200, 110, 0.5);
-        background: rgba(25, 32, 56, 0.8);
-        transition: all 0.3s;
-      }
-      .lantern-pip.lit {
-        background: radial-gradient(circle, #fff3b0, #ff9922);
-        box-shadow: 0 0 12px #ffaa33;
-        border-color: #fff0b8;
+        margin-bottom: 4px;
       }
       .timer-text {
         font-variant-numeric: tabular-nums;
-        font-size: 15px;
-        font-weight: 600;
-        color: #f4e6d0;
+        font-size: 24px;
+        font-weight: 700;
+        color: #f5f1e6;
       }
-      .hud-actions {
+      .timer-text.danger {
+        color: #ff5a5f;
+        animation: pulseBlink 0.7s infinite;
+      }
+      @keyframes pulseBlink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.38; }
+      }
+      .wind-badge {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #8fa3b8;
+        min-height: 16px;
+      }
+      .wind-badge.warn {
+        color: #f2c14e;
+        font-weight: 700;
+      }
+      .wind-badge.active {
+        color: #ff5a5f;
+        font-weight: 700;
+      }
+      .right-stats {
+        text-align: right;
+      }
+      .lantern-summary {
         display: flex;
         align-items: center;
-        gap: 10px;
-      }
-      .hud-btn {
-        pointer-events: auto;
-        cursor: pointer;
-        border: 1px solid rgba(255, 196, 107, 0.35);
-        background: rgba(24, 31, 58, 0.82);
-        color: #ffe8c2;
-        border-radius: 10px;
-        padding: 7px 12px;
-        font-size: 13px;
-        font-weight: 600;
-        transition: background 0.15s, border-color 0.15s;
-      }
-      .hud-btn:hover {
-        background: rgba(255, 174, 66, 0.22);
-        border-color: #ffbe5c;
+        justify-content: flex-end;
+        gap: 8px;
+        font-size: 16px;
+        font-weight: 700;
+        color: #ffb347;
+        margin-bottom: 4px;
       }
       .hud-bottom {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 12px;
+      }
+      .bottom-spacer {
+        width: 180px;
+      }
+      .bottom-center {
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 8px;
+        flex: 1;
       }
       .context-prompt {
-        background: rgba(255, 166, 48, 0.18);
-        border: 1px solid rgba(255, 196, 98, 0.65);
-        color: #fff2d6;
+        background: rgba(255, 179, 71, 0.22);
+        border: 1px solid #f2c14e;
+        color: #f5f1e6;
         border-radius: 999px;
         padding: 7px 18px;
         font-size: 14px;
-        font-weight: 600;
+        font-weight: 700;
         opacity: 0;
         transform: translateY(6px);
-        transition: opacity 0.2s, transform 0.2s;
+        transition: opacity 0.18s, transform 0.18s;
       }
       .context-prompt.visible {
         opacity: 1;
         transform: translateY(0);
       }
-      .controls-bar {
-        font-size: 12px;
-        color: #c8bca8;
-        background: rgba(12, 16, 32, 0.65);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+      .mote-bar {
+        display: flex;
+        gap: 6px;
+        background: rgba(14, 20, 48, 0.8);
+        border: 1px solid rgba(242, 193, 78, 0.35);
         border-radius: 999px;
-        padding: 6px 16px;
+        padding: 8px 14px;
       }
-      .controls-bar kbd {
-        background: rgba(255, 200, 120, 0.16);
-        border: 1px solid rgba(255, 200, 120, 0.35);
-        border-radius: 4px;
-        padding: 1px 5px;
-        color: #ffd58c;
-        font-family: inherit;
+      .mote-slot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 229, 138, 0.45);
+        background: rgba(27, 35, 80, 0.7);
+        transition: all 0.18s;
+      }
+      .mote-slot.filled {
+        background: radial-gradient(circle, #fff6c2, #ffe58a 70%, #ffb347);
+        box-shadow: 0 0 10px #ffe58a;
+        border-color: #fff6c2;
+      }
+      .abilities-panel {
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+      }
+      .ability-box {
+        width: 82px;
+        text-align: center;
+        background: rgba(14, 20, 48, 0.82);
+        border: 1px solid rgba(242, 193, 78, 0.35);
+        border-radius: 12px;
+        padding: 8px 6px;
+      }
+      .ability-box.ready {
+        border-color: #f2c14e;
+        box-shadow: 0 0 12px rgba(242, 193, 78, 0.25);
+      }
+      .ability-box.charm-active {
+        border-color: #c8102e;
+        box-shadow: 0 0 14px rgba(200, 16, 46, 0.55);
+      }
+      .ability-key {
         font-size: 11px;
+        color: #f2c14e;
+        font-weight: 700;
+      }
+      .ability-name {
+        font-size: 12px;
+        color: #f5f1e6;
+        margin: 2px 0;
+      }
+      .ability-cd {
+        font-size: 12px;
+        color: #8fa3b8;
+        font-variant-numeric: tabular-nums;
+      }
+      .offscreen-arrow {
+        position: absolute;
+        width: 34px;
+        height: 34px;
+        pointer-events: none;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        color: #ffb347;
+        text-shadow: 0 0 10px #ffb347;
+        transform: translate(-50%, -50%);
       }
       .overlay {
         position: absolute;
         inset: 0;
-        background: radial-gradient(circle at center, rgba(16, 20, 42, 0.72), rgba(7, 9, 22, 0.92));
+        background: radial-gradient(circle at center, rgba(27, 35, 80, 0.78), rgba(14, 20, 48, 0.94));
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 10;
+        z-index: 20;
         padding: 20px;
       }
       .overlay.hidden {
         display: none;
       }
       .card {
-        max-width: 480px;
+        max-width: 520px;
         width: 100%;
-        background: rgba(16, 21, 42, 0.94);
-        border: 1px solid rgba(255, 196, 107, 0.4);
+        background: rgba(14, 20, 48, 0.96);
+        border: 1px solid rgba(242, 193, 78, 0.45);
         border-radius: 20px;
         padding: 28px 30px;
         text-align: center;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
       }
       .card h1 {
         font-size: 28px;
-        color: #ffd27d;
-        margin-bottom: 8px;
+        color: #f2c14e;
+        margin-bottom: 10px;
       }
       .card .subtitle {
-        font-size: 14px;
-        color: #d4c8b4;
+        font-size: 15px;
+        color: #f5f1e6;
         line-height: 1.55;
         margin-bottom: 18px;
       }
-      .card .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
+      .card .quote {
+        font-style: italic;
+        color: #ffe9b0;
+        background: rgba(255, 179, 71, 0.1);
+        border-left: 3px solid #f2c14e;
+        padding: 10px 14px;
+        border-radius: 8px;
+        text-align: left;
+        margin-bottom: 18px;
+        font-size: 14px;
+      }
+      .btn-stack {
+        display: flex;
+        flex-direction: column;
         gap: 10px;
-        margin-bottom: 20px;
+        align-items: center;
       }
-      .card .stat-box {
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid rgba(255, 196, 107, 0.18);
-        border-radius: 12px;
-        padding: 10px;
-      }
-      .card .stat-box .k {
-        font-size: 11px;
-        color: #b7aa96;
-        text-transform: uppercase;
-      }
-      .card .stat-box .v {
-        font-size: 20px;
-        font-weight: 700;
-        color: #ffbe5c;
-        margin-top: 2px;
+      .btn-row {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
       }
       .primary-btn {
         cursor: pointer;
         border: none;
         border-radius: 12px;
-        padding: 12px 28px;
-        font-size: 16px;
+        padding: 11px 24px;
+        font-size: 15px;
         font-weight: 700;
-        color: #1c1205;
-        background: linear-gradient(135deg, #ffd87a, #ff9929);
-        box-shadow: 0 6px 20px rgba(255, 158, 44, 0.4);
-        transition: transform 0.15s, box-shadow 0.15s;
+        color: #0e1430;
+        background: linear-gradient(135deg, #ffe9b0, #ffb347);
+        min-width: 180px;
       }
-      .primary-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 10px 26px rgba(255, 158, 44, 0.55);
+      .secondary-btn {
+        cursor: pointer;
+        border: 1px solid rgba(242, 193, 78, 0.45);
+        border-radius: 12px;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #f5f1e6;
+        background: rgba(27, 35, 80, 0.85);
+        min-width: 180px;
+      }
+      .setting-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin: 12px 0;
+        text-align: left;
+        font-size: 14px;
+      }
+      .setting-row input[type="range"] {
+        width: 190px;
+        accent-color: #f2c14e;
+      }
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+      .stat-box {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(242, 193, 78, 0.25);
+        border-radius: 12px;
+        padding: 10px;
+      }
+      .stat-box .k {
+        font-size: 11px;
+        color: #cbbba0;
+        text-transform: uppercase;
+      }
+      .stat-box .v {
+        font-size: 20px;
+        font-weight: 700;
+        color: #f2c14e;
+        margin-top: 2px;
       }
     </style>
   </head>
